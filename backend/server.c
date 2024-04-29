@@ -16,15 +16,28 @@ int main(void) {
   addr.sin_addr.s_addr = INADDR_ANY;
   addr.sin_port = htons(8080);
 
-  bind(server_sock, (struct sockaddr*) &addr, addr_len);
+  if (bind(server_sock, (struct sockaddr*) &addr, addr_len) == -1) {
+    perror("Failed to bind socket\n");
+    exit(EXIT_FAILURE);
+  }
 
-  listen(server_sock, 3);
+  if (listen(server_sock, 3) == -1) {
+    perror("Failed to accept connection\n");
+    exit(EXIT_FAILURE);
+  }
 
-  int sock = accept(server_sock, (struct sockaddr*) &addr, &addr_len);
+  int sock;
+  if ((sock = accept(server_sock, (struct sockaddr*) &addr, &addr_len)) == -1) {
+    perror("Failed to accept connection\n");
+    exit(EXIT_FAILURE);
+  }
 
   char buffer[1024];
   strcpy(buffer, "Hello World!\n");
-  send(sock, buffer, strlen(buffer), 0);
+  if (send(sock, buffer, strlen(buffer), 0) == -1) {
+    perror("Failed to send data to socket\n");
+    exit(EXIT_FAILURE);
+  }
 
   close(sock);
   close(server_sock);
