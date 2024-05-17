@@ -44,17 +44,57 @@ int main(void) {
   return 0;
 }
 
+HttpRequest parse_http_request(const char *request_str) {
+    HttpRequest request;
+    request.method = NULL;
+    request.uri = NULL;
+    request.http_version = NULL;
+    request.headers = NULL;
+    request.body = NULL;
+
+    char buffer[1024];
+    strncpy(buffer, request_str, 1024);
+    char *line = strtok(buffer, "\r\n");
+
+    request.method = strtok(line, " ");
+    request.uri = strtok(NULL, " ");
+    request.http_version = strtok(NULL, " ");
+
+    request.headers = strstr(request_str, "\r\n") + 2;
+    char *header_end = strstr(request.headers, "\r\n\r\n");
+    if (header_end != NULL) {
+        *header_end = '\0'; // Null-terminate the headers
+        request.body = header_end + 4; // Start of body
+    }
+
+    return request;
+}
+
 void *handleConnection(void *arg) {
   connection_args *my_args = (connection_args *) arg;
   int client_socket = my_args->client_socket;
 
   char buffer[1024];
-  strcpy(buffer, "Hello World!\n");
-  if (send(client_socket, buffer, strlen(buffer), 0) == -1) {
-    perror("Failed to send data to socket\n");
-    exit(EXIT_FAILURE);
+  ssize_t bytes_read = recv(client_socket, buffer, 1024 - 1, 0);
+  if (bytes_read < 0) {
+    perror("Failed to read from socket");
+    close(client_socket);
+    free(my_args);
+    pthread_exit(NULL);
   }
+  buffer[bytes_read] = '\0';
+
+  HttpRequest request = parse_http_request(buffer);
+
+  char response[1024];
+  if (strcmp(request.uri, "/hello") == 0) {
+      sprintf(response, "HTTP/1.1 200 OK\r\nContent-Type: text/html\r\n\r\n<html><body><h1>Hello from %s!</h1></body></html>", request.uri);
+  } else {
+      strcpy(response, "HTTP/1.1 404 Not Found\r\nContent-Type: text/html\r\n\r\n<html><body><h1>404 Not Found</h1></body></html>");
+  }
+  send(client_socket, response, strlen(response), 0);
 
   close(client_socket);
+  free(my_args);
   pthread_exit(NULL);
 }
