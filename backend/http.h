@@ -14,6 +14,7 @@ typedef struct HTTPRequest {
 } HttpRequest;
 
 HttpRequest parse_http_request(const char *request_str);
+char *create_http_response(char *status_code, char *data);
 
 
 #endif

@@ -47,6 +47,7 @@ int main(void) {
 
 
 void *handleConnection(void *arg) {
+  // Convert thread args
   connection_args *my_args = (connection_args *) arg;
   int client_socket = my_args->client_socket;
   free(my_args);
@@ -65,14 +66,16 @@ void *handleConnection(void *arg) {
   HttpRequest request = parse_http_request(buffer);
 
   // Send Response
-  char response[1024] = {0};
-  if (strcmp(request.uri, "/hello") == 0) {
-    sprintf(response, "HTTP/1.1 200 OK\r\nContent-Type: text/html\r\n\r\n<html><body><h1>Hello from %s!</h1></body></html>", request.uri);
-  } 
-  else {
-    strcpy(response, "HTTP/1.1 404 Not Found\r\nContent-Type: text/html\r\n\r\n<html><body><h1>404 Not Found</h1></body></html>");
+  char *response;
+  if (strlen(request.uri) > 0) {
+    response = create_http_response("200 OK", request.uri);
   }
+  else {
+    response = create_http_response("404 Not Found", "404 Not Found");
+  }
+
   send(client_socket, response, strlen(response), 0);
+  free(response);
 
 
   // Exit Thread
