@@ -2,6 +2,20 @@
 #include "server.h"
 #include "http.c"
 
+TaskList taskList = {{0}, 0, PTHREAD_MUTEX_INITIALIZER};
+
+void add_task(const char* new_task) {
+    pthread_mutex_lock(&taskList.lock); // Lock the mutex
+
+    if (taskList.task_count < MAX_TASKS) {
+        strncpy(taskList.tasks[taskList.task_count], new_task, 255);
+        taskList.tasks[taskList.task_count][255] = '\0'; // Ensure null-termination
+        taskList.task_count++;
+    }
+
+    pthread_mutex_unlock(&taskList.lock); // Unlock the mutex
+}
+
 int main(void) {
   int server_socket = socket(AF_INET, SOCK_STREAM, 0);
 
@@ -77,12 +91,18 @@ void *handleConnection(void *arg) {
 
   // Send Response
   char *response;
-  if (strlen(request.uri) > 0) {
-    response = create_http_response("200 OK", request.uri);
-  }
-  else {
-    response = create_http_response("404 Not Found", "404 Not Found");
-  }
+    if (strcmp(request.method, "GET") == 0) {
+        // Handle GET request
+        response = handleGetRequest(request);
+    } else if (strcmp(request.method, "POST") == 0) {
+        // Handle POST request
+        response = handlePostRequest(request);
+    } else if (strcmp(request.method, "DELETE") == 0) {
+        // Handle DELETE request
+        response = handleDeleteRequest(request);
+    } else {
+        response = create_http_response("405 Method Not Allowed", "Method Not Allowed");
+    }
 
   ssize_t bytes_sent = send(client_socket, response, strlen(response), 0);
   if (bytes_sent < 0) {
@@ -98,4 +118,63 @@ void *handleConnection(void *arg) {
   close(client_socket);
   printf("Thread ending...\n\n");
   pthread_exit(NULL);
+}
+
+char *handleGetRequest(HttpRequest request) {
+    char response_content[4096] = "Current To-Do List:<br>";
+
+    pthread_mutex_lock(&taskList.lock); // Lock the mutex
+
+    for (int i = 0; i < taskList.task_count; i++) {
+        strcat(response_content, "<li>");
+        strcat(response_content, taskList.tasks[i]);
+        strcat(response_content, "</li>");
+    }
+
+    pthread_mutex_unlock(&taskList.lock); // Unlock the mutex
+
+    return create_http_response("200 OK", response_content);
+}
+
+char *handlePostRequest(HttpRequest request) {
+    if (request.body == NULL) {
+        return create_http_response("400 Bad Request", "No data in request body");
+    }
+
+    // Assume task is directly in the body; validate and add to list
+    pthread_mutex_lock(&taskList.lock);
+    if (taskList.task_count < MAX_TASKS) {
+        strncpy(taskList.tasks[taskList.task_count], request.body, 255);
+        taskList.tasks[taskList.task_count][255] = '\0'; // Ensure null-termination
+        taskList.task_count++;
+        pthread_mutex_unlock(&taskList.lock);
+        char response_content[512];
+        sprintf(response_content, "Task '%s' added successfully!", request.body);
+        return create_http_response("200 OK", response_content);
+    } else {
+        pthread_mutex_unlock(&taskList.lock);
+        return create_http_response("500 Internal Server Error", "Task list is full");
+    }
+}
+
+
+char *handleDeleteRequest(HttpRequest request) {
+    // Parse the task index from the URI
+    int task_index;
+    if (sscanf(request.uri, "/delete?task=%d", &task_index) != 1 || task_index < 1 || task_index > taskList.task_count) {
+        return create_http_response("400 Bad Request", "Invalid task index");
+    }
+
+    // Adjust index for 0-based array access
+    task_index--;
+
+    pthread_mutex_lock(&taskList.lock);
+    // Remove the task by shifting subsequent tasks down
+    for (int i = task_index; i < taskList.task_count - 1; i++) {
+        strcpy(taskList.tasks[i], taskList.tasks[i + 1]);
+    }
+    taskList.task_count--;
+    pthread_mutex_unlock(&taskList.lock);
+
+    return create_http_response("200 OK", "Task deleted successfully");
 }

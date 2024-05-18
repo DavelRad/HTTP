@@ -16,6 +16,9 @@ typedef struct HTTPRequest {
 
 HttpRequest parse_http_request(const char *request_str);
 char *create_http_response(char *status_code, char *data);
+char *handleGetRequest(HttpRequest request);
+char *handlePostRequest(HttpRequest request);
+char *handleDeleteRequest(HttpRequest request);
 
 
 #endif
