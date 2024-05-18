@@ -2,26 +2,24 @@
 #include "http.h"
 
 HttpRequest parse_http_request(const char *request_str) {
-  HttpRequest request;
-  request.method = NULL;
-  request.uri = NULL;
-  request.http_version = NULL;
-  request.headers = NULL;
-  request.body = NULL;
-
+  HttpRequest request = {NULL, NULL, NULL, NULL, NULL};
   char buffer[1024];
-  strncpy(buffer, request_str, 1024);
+  strncpy(buffer, request_str, 1023);
+  buffer[1023] = '\0'; // Ensure null termination
+
   char *line = strtok(buffer, "\r\n");
+  if (line) {
+    request.method = strdup(strtok(line, " "));
+    request.uri = strdup(strtok(NULL, " "));
+    request.http_version = strdup(strtok(NULL, " "));
+  }
 
-  request.method = strtok(line, " ");
-  request.uri = strtok(NULL, " ");
-  request.http_version = strtok(NULL, " ");
-
-  request.headers = strstr(request_str, "\r\n") + 2;
+  // Adjust this to dynamically allocate and copy headers/body if needed
+  request.headers = strdup(strstr(request_str, "\r\n") + 2);
   char *header_end = strstr(request.headers, "\r\n\r\n");
-  if (header_end != NULL) {
+  if (header_end) {
       *header_end = '\0'; // Null-terminate the headers
-      request.body = header_end + 4; // Start of body
+      request.body = strdup(header_end + 4); // Copy body
   }
 
   return request;
@@ -32,7 +30,7 @@ char *create_http_response(char *status_code, char *data) {
   int offset = 0;
 
   // Create HTTP header
-  offset += sprintf(response + offset, "HTTP/1.1 200 OK\r\n");
+  offset += sprintf(response + offset, "HTTP/1.1 %s\r\n", status_code);
   offset += sprintf(response + offset, "Content-Type: text/html\r\n");
   offset += sprintf(response + offset, "\r\n");
 

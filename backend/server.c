@@ -11,17 +11,20 @@ int main(void) {
   addr.sin_addr.s_addr = INADDR_ANY;
   addr.sin_port = htons(8080);
 
+  printf("Binding...\n");
   if (bind(server_socket, (struct sockaddr *) &addr, addr_len) == -1) {
     perror("Failed to bind socket\n");
     exit(EXIT_FAILURE);
   }
 
+  printf("Listening...\n");
   // Set max number of connections that we can handle
   if (listen(server_socket, MAX_NUM_THREADS) == -1) {
     perror("Failed to start accepting connections\n");
     exit(EXIT_FAILURE);
   }
 
+  printf("Ready to accept connections...\n");
   // Accept connections
   while (true) {
     struct sockaddr_in client_addr;
@@ -39,7 +42,6 @@ int main(void) {
       pthread_create(&thread, NULL, handleConnection, (void *) args);
     }
   }
-
 
   close(server_socket);
   return 0;
@@ -59,7 +61,15 @@ void *handleConnection(void *arg) {
     perror("Failed to read from socket");
     close(client_socket);
     pthread_exit(NULL);
-  }
+  } 
+
+  printf("Bytes read: %zd\n", bytes_read);
+  if (bytes_read == 0) {
+    printf("Debug: No data received or connection closed by client.\n\n");
+    close(client_socket);
+    pthread_exit(NULL);
+}
+  
   buffer[bytes_read] = '\0';
 
   // Parse HTTP request
@@ -74,11 +84,18 @@ void *handleConnection(void *arg) {
     response = create_http_response("404 Not Found", "404 Not Found");
   }
 
-  send(client_socket, response, strlen(response), 0);
+  ssize_t bytes_sent = send(client_socket, response, strlen(response), 0);
+  if (bytes_sent < 0) {
+      perror("send failed");
+  } else if (bytes_sent != strlen(response)) {
+      printf("Warning: Not all bytes were sent. Expected %zu, sent %zd\n", strlen(response), bytes_sent);
+  } else {
+      printf("Success: All bytes were sent correctly.\n");
+  }
   free(response);
-
 
   // Exit Thread
   close(client_socket);
+  printf("Thread ending...\n\n");
   pthread_exit(NULL);
 }
