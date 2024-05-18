@@ -17,13 +17,6 @@ typedef struct connection_args {
   int client_socket;
 } connection_args;
 
-typedef struct {
-    char *method;
-    char *uri;
-    char *http_version;
-    char *headers;
-    char *body;
-} HttpRequest;
 
 void *handleConnection(void *arg);
 
