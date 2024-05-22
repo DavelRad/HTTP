@@ -152,13 +152,24 @@ int getHTMLFromFile(char **document, char *filePath) {
 }
 
 char *handleGetRequest(HttpRequest request) {
-  // if (strcmp(request.uri, "/todo") == 0) {
+  // Serve HTML file for /pizza
+  if (strcmp(request.uri, "/pizza") == 0) {
+    char *document;
+    int size = getHTMLFromFile(&document, "../frontend/pizza.html");
+    if (size == 0) {
+      return NULL;
+    }
+
+    char *response = create_http_response_HTML(document, size);
+
+    free(document);
+    return response;
+  }
+  // Otherwise default to todo list
+  else {
     char response_content[4096] = "Current To-Do List:<br>";
 
     pthread_mutex_lock(&taskList.lock); // Lock the mutex
-
-
-
     // Add a script for the delete button to send HTTP DELETE request
     strcat(response_content, "<script>"
                           "function deleteTask(id) {"
@@ -173,6 +184,7 @@ char *handleGetRequest(HttpRequest request) {
                           "        }"
                           "    };"
                           "    xhr.send();"
+                          "    location.reload();"
                           "}"
                           "</script>");
 
@@ -200,21 +212,8 @@ char *handleGetRequest(HttpRequest request) {
 
 
     pthread_mutex_unlock(&taskList.lock); // Unlock the mutex
-
     return create_http_response("200 OK", response_content);
-  // }
-  // else {
-  //   char *document;
-  //   int size = getHTMLFromFile(&document, "../frontend/tasks.html");
-  //   if (size == 0) {
-  //     return NULL;
-  //   }
-  //
-  //   char *response = create_http_response_HTML(document, size);
-  //
-  //   free(document);
-  //   return response;
-  // }
+  }
 }
 
 char *handlePostRequest(HttpRequest request) {
