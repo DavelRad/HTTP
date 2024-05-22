@@ -41,5 +41,20 @@ char *create_http_response(char *status_code, char *data) {
 }
 
 
+char *create_http_response_HTML(char *document, int size) {
+  // Alocate extra memory for HTTP header
+  char *response = (char *) calloc(size + 1024, sizeof(char));
+  int offset = 0;
+
+  // Create HTTP header
+  offset += sprintf(response + offset, "HTTP/1.1 200 OK\r\n");
+  offset += sprintf(response + offset, "Content-Type: text/html\r\n");
+  offset += sprintf(response + offset, "\r\n");
+
+  // Create HTML for response body
+  offset += sprintf(response + offset, "%s", document);
+
+  return response;
+}
 
 

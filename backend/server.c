@@ -1,20 +1,7 @@
 
 #include "server.h"
-#include "http.c"
 
-TaskList taskList = {{0}, 0, PTHREAD_MUTEX_INITIALIZER};
-
-void add_task(const char* new_task) {
-    pthread_mutex_lock(&taskList.lock); // Lock the mutex
-
-    if (taskList.task_count < MAX_TASKS) {
-        strncpy(taskList.tasks[taskList.task_count], new_task, 255);
-        taskList.tasks[taskList.task_count][255] = '\0'; // Ensure null-termination
-        taskList.task_count++;
-    }
-
-    pthread_mutex_unlock(&taskList.lock); // Unlock the mutex
-}
+TaskList taskList = {{{0}}, 0, PTHREAD_MUTEX_INITIALIZER};
 
 int main(void) {
   int server_socket = socket(AF_INET, SOCK_STREAM, 0);
@@ -120,20 +107,73 @@ void *handleConnection(void *arg) {
   pthread_exit(NULL);
 }
 
-char *handleGetRequest(HttpRequest request) {
-    char response_content[4096] = "Current To-Do List:<br>";
+int getHTMLFromFile(char **document, char *filePath) {
+  FILE *file = fopen(filePath, "r");
+  if (file == NULL) {
+    perror("Failed to open file.\n");
+    return 0;
+  }
 
-    pthread_mutex_lock(&taskList.lock); // Lock the mutex
+  int docSize = 2048;
+  *document = (char *) calloc(docSize, sizeof(char));
 
-    for (int i = 0; i < taskList.task_count; i++) {
-        strcat(response_content, "<li>");
-        strcat(response_content, taskList.tasks[i]);
-        strcat(response_content, "</li>");
+  // Read from file line by line into document buffer
+  char *line = NULL;
+  size_t size = 0;
+  int numBytesRead = 0;
+  int totalBytesRead = 0;
+  while ((numBytesRead = getline(&line, &size, file)) > 0) {
+    totalBytesRead += numBytesRead + 1;
+
+    // Increase size of document buffer if necessary
+    while (totalBytesRead > docSize) {
+      docSize *= 2;
+      *document = realloc(*document, docSize);
     }
 
-    pthread_mutex_unlock(&taskList.lock); // Unlock the mutex
+    // Fix carriage return on line from file to match HTML spec
+    char *processedLine = malloc(strlen(line) + 2);
+    strcpy(processedLine, line);
 
-    return create_http_response("200 OK", response_content);
+    int lastCharIdx = strlen(processedLine) - 1;
+    processedLine[lastCharIdx] = '\r';
+    processedLine[lastCharIdx+1] = '\n';
+    processedLine[lastCharIdx+2] = '\0';
+
+    // Add line 
+    strcat(*document, processedLine);
+    free(processedLine);
+  }
+
+  free(line);
+  return totalBytesRead;
+}
+
+char *handleGetRequest(HttpRequest request) {
+    // char response_content[4096] = "Current To-Do List:<br>";
+    //
+    // pthread_mutex_lock(&taskList.lock); // Lock the mutex
+    //
+    // for (int i = 0; i < taskList.task_count; i++) {
+    //     strcat(response_content, "<li>");
+    //     strcat(response_content, taskList.tasks[i]);
+    //     strcat(response_content, "</li>");
+    // }
+    //
+    // pthread_mutex_unlock(&taskList.lock); // Unlock the mutex
+    //
+    // return create_http_response("200 OK", response_content);
+
+  char *document;
+  int size = getHTMLFromFile(&document, "../frontend/tasks.html");
+  if (size == 0) {
+    return NULL;
+  }
+
+  char *response = create_http_response_HTML(document, size);
+
+  free(document);
+  return response;
 }
 
 char *handlePostRequest(HttpRequest request) {
@@ -177,4 +217,16 @@ char *handleDeleteRequest(HttpRequest request) {
     pthread_mutex_unlock(&taskList.lock);
 
     return create_http_response("200 OK", "Task deleted successfully");
+}
+
+void add_task(const char* new_task) {
+    pthread_mutex_lock(&taskList.lock); // Lock the mutex
+
+    if (taskList.task_count < MAX_TASKS) {
+        strncpy(taskList.tasks[taskList.task_count], new_task, 255);
+        taskList.tasks[taskList.task_count][255] = '\0'; // Ensure null-termination
+        taskList.task_count++;
+    }
+
+    pthread_mutex_unlock(&taskList.lock); // Unlock the mutex
 }

@@ -10,6 +10,7 @@
 #include <unistd.h>
 #include <stdbool.h>
 #include <pthread.h>
+#include "http.c"
 
 #define MAX_NUM_THREADS 2
 #define MAX_TASKS 100
@@ -28,6 +29,10 @@ extern TaskList taskList;
 
 
 void *handleConnection(void *arg);
+char *handleGetRequest(HttpRequest request);
+char *handlePostRequest(HttpRequest request);
+char *handleDeleteRequest(HttpRequest request);
+void add_task(const char* new_task);
 
 
 #endif
