@@ -3,6 +3,7 @@
 
 TaskList taskList = {{{0}}, 0, PTHREAD_MUTEX_INITIALIZER};
 
+
 int main(void) {
   int server_socket = socket(AF_INET, SOCK_STREAM, 0);
 
@@ -69,7 +70,7 @@ void *handleConnection(void *arg) {
     printf("Debug: No data received or connection closed by client.\n\n");
     close(client_socket);
     pthread_exit(NULL);
-}
+  }
   
   buffer[bytes_read] = '\0';
 
@@ -99,6 +100,7 @@ void *handleConnection(void *arg) {
   } else {
       printf("Success: All bytes were sent correctly.\n");
   }
+
   free(response);
 
   // Exit Thread
@@ -150,55 +152,97 @@ int getHTMLFromFile(char **document, char *filePath) {
 }
 
 char *handleGetRequest(HttpRequest request) {
-    // char response_content[4096] = "Current To-Do List:<br>";
-    //
-    // pthread_mutex_lock(&taskList.lock); // Lock the mutex
-    //
-    // for (int i = 0; i < taskList.task_count; i++) {
-    //     strcat(response_content, "<li>");
-    //     strcat(response_content, taskList.tasks[i]);
-    //     strcat(response_content, "</li>");
-    // }
-    //
-    // pthread_mutex_unlock(&taskList.lock); // Unlock the mutex
-    //
-    // return create_http_response("200 OK", response_content);
+  // if (strcmp(request.uri, "/todo") == 0) {
+    char response_content[4096] = "Current To-Do List:<br>";
 
-  char *document;
-  int size = getHTMLFromFile(&document, "../frontend/tasks.html");
-  if (size == 0) {
-    return NULL;
-  }
+    pthread_mutex_lock(&taskList.lock); // Lock the mutex
 
-  char *response = create_http_response_HTML(document, size);
 
-  free(document);
-  return response;
+
+    // Add a script for the delete button to send HTTP DELETE request
+    strcat(response_content, "<script>"
+                          "function deleteTask(id) {"
+                          "    var xhr = new XMLHttpRequest();"
+                          "    var url = \"http://localhost:8080/delete?task=\" + id;"
+                          "    xhr.open(\"DELETE\", url, true);"
+                          "    xhr.onreadystatechange = function () {"
+                          "        if (xhr.readyState === 4 && xhr.status === 200) {"
+                          "            console.log(\"Task deleted successfully.\");"
+                          "        } else {"
+                          "            console.error(\"Failed to delete task.\");"
+                          "        }"
+                          "    };"
+                          "    xhr.send();"
+                          "}"
+                          "</script>");
+
+    // Add li for each task in task list
+    for (int i = 0; i < taskList.task_count; i++) {
+      char li[50];
+      sprintf(li, "<li id=\"%d\">", i + 1);
+      strcat(response_content, li);
+      strcat(response_content, taskList.tasks[i]);
+
+      // Add a delete button for each task
+      char deleteButton[100];
+      sprintf(deleteButton, "<button onClick=\"deleteTask(%d)\">Delete</button>", i + 1);
+      strcat(response_content, deleteButton);
+
+      strcat(response_content, "</li>");
+    }
+
+    // Append form for adding new tasks
+    strcat(response_content, "<form action=\"http://localhost:8080/post\" method=\"POST\">"
+                          "<label for=\"task\">Enter Todo:</label><br>"
+                          "<input type=\"text\" id=\"task\" name=\"task\"><br><br>"
+                          "<input type=\"submit\" value=\"Submit\">"
+                          "</form>");
+
+
+    pthread_mutex_unlock(&taskList.lock); // Unlock the mutex
+
+    return create_http_response("200 OK", response_content);
+  // }
+  // else {
+  //   char *document;
+  //   int size = getHTMLFromFile(&document, "../frontend/tasks.html");
+  //   if (size == 0) {
+  //     return NULL;
+  //   }
+  //
+  //   char *response = create_http_response_HTML(document, size);
+  //
+  //   free(document);
+  //   return response;
+  // }
 }
 
 char *handlePostRequest(HttpRequest request) {
-    if (request.body == NULL) {
-        return create_http_response("400 Bad Request", "No data in request body");
-    }
+  if (request.body == NULL) {
+      return create_http_response("400 Bad Request", "No data in request body");
+  }
 
-    // Assume task is directly in the body; validate and add to list
-    pthread_mutex_lock(&taskList.lock);
-    if (taskList.task_count < MAX_TASKS) {
-        strncpy(taskList.tasks[taskList.task_count], request.body, 255);
-        taskList.tasks[taskList.task_count][255] = '\0'; // Ensure null-termination
-        taskList.task_count++;
-        pthread_mutex_unlock(&taskList.lock);
-        char response_content[512];
-        sprintf(response_content, "Task '%s' added successfully!", request.body);
-        return create_http_response("200 OK", response_content);
-    } else {
-        pthread_mutex_unlock(&taskList.lock);
-        return create_http_response("500 Internal Server Error", "Task list is full");
-    }
+  // Assume task is directly in the body; validate and add to list
+  pthread_mutex_lock(&taskList.lock);
+  if (taskList.task_count < MAX_TASKS) {
+      strncpy(taskList.tasks[taskList.task_count], request.body, 255);
+      taskList.tasks[taskList.task_count][255] = '\0'; // Ensure null-termination
+      taskList.task_count++;
+      pthread_mutex_unlock(&taskList.lock);
+
+      char response_content[512];
+      sprintf(response_content, "Task '%s' added successfully!", request.body);
+      return create_http_response("200 OK", response_content);
+  } else {
+      pthread_mutex_unlock(&taskList.lock);
+      return create_http_response("500 Internal Server Error", "Task list is full");
+  }
 }
 
 
 char *handleDeleteRequest(HttpRequest request) {
+    printf("Deleting\n");
+
     // Parse the task index from the URI
     int task_index;
     if (sscanf(request.uri, "/delete?task=%d", &task_index) != 1 || task_index < 1 || task_index > taskList.task_count) {
@@ -220,13 +264,13 @@ char *handleDeleteRequest(HttpRequest request) {
 }
 
 void add_task(const char* new_task) {
-    pthread_mutex_lock(&taskList.lock); // Lock the mutex
+  pthread_mutex_lock(&taskList.lock); // Lock the mutex
 
-    if (taskList.task_count < MAX_TASKS) {
-        strncpy(taskList.tasks[taskList.task_count], new_task, 255);
-        taskList.tasks[taskList.task_count][255] = '\0'; // Ensure null-termination
-        taskList.task_count++;
-    }
+  if (taskList.task_count < MAX_TASKS) {
+      strncpy(taskList.tasks[taskList.task_count], new_task, 255);
+      taskList.tasks[taskList.task_count][255] = '\0'; // Ensure null-termination
+      taskList.task_count++;
+  }
 
-    pthread_mutex_unlock(&taskList.lock); // Unlock the mutex
+  pthread_mutex_unlock(&taskList.lock); // Unlock the mutex
 }
