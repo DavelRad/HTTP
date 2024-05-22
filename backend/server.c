@@ -56,7 +56,7 @@ void *handleConnection(void *arg) {
   int client_socket = my_args->client_socket;
   free(my_args);
 
-  // Read request from socket
+  // Read requests from socket
   char buffer[1024];
   ssize_t bytes_read = recv(client_socket, buffer, 1024, 0);
   if (bytes_read < 0) {
@@ -94,7 +94,7 @@ void *handleConnection(void *arg) {
 
   ssize_t bytes_sent = send(client_socket, response, strlen(response), 0);
   if (bytes_sent < 0) {
-      perror("send failed");
+      perror("Send failed");
   } else if (bytes_sent != strlen(response)) {
       printf("Warning: Not all bytes were sent. Expected %zu, sent %zd\n", strlen(response), bytes_sent);
   } else {
@@ -184,7 +184,7 @@ char *handleGetRequest(HttpRequest request) {
                           "        }"
                           "    };"
                           "    xhr.send();"
-                          "    location.reload();"
+                          "    setTimeout(() => location.reload(), 100);"
                           "}"
                           "</script>");
 
@@ -204,10 +204,30 @@ char *handleGetRequest(HttpRequest request) {
     }
 
     // Append form for adding new tasks
-    strcat(response_content, "<form action=\"http://localhost:8080/post\" method=\"POST\">"
-                          "<label for=\"task\">Enter Todo:</label><br>"
-                          "<input type=\"text\" id=\"task\" name=\"task\"><br><br>"
-                          "<input type=\"submit\" value=\"Submit\">"
+    // Add script to form so that it doesn't redirect to /post
+    strcat(response_content, "<script>"
+                          "function submitForm(event) {"
+                          "    event.preventDefault();"
+                          "    var taskInput = document.getElementById('task');"
+                          "    var task = taskInput.value;"
+                          "    var xhr = new XMLHttpRequest();"
+                          "    xhr.open('POST', 'http://localhost:8080/post', true);"
+                          "    xhr.setRequestHeader('Content-Type', 'application/x-www-form-urlencoded');"
+                          "    xhr.onreadystatechange = function () {"
+                          "        if (xhr.readyState === 4 && xhr.status === 200) {"
+                          "            console.log('Task added successfully.');"
+                          "            setTimeout(() => location.reload(), 100);"
+                          "        } else if (xhr.readyState === 4) {"
+                          "            console.error('Failed to add task.');"
+                          "        }"
+                          "    };"
+                          "    xhr.send('task=' + encodeURIComponent(task));"
+                          "}"
+                          "</script>"
+                          "<form onsubmit='submitForm(event)'>"
+                          "<label for='task'>Enter Todo:</label><br>"
+                          "<input type='text' id='task' name='task'><br><br>"
+                          "<input type='submit' value='Submit'>"
                           "</form>");
 
 
@@ -215,29 +235,6 @@ char *handleGetRequest(HttpRequest request) {
     return create_http_response("200 OK", response_content);
   }
 }
-
-char *handlePostRequest(HttpRequest request) {
-  if (request.body == NULL) {
-      return create_http_response("400 Bad Request", "No data in request body");
-  }
-
-  // Assume task is directly in the body; validate and add to list
-  pthread_mutex_lock(&taskList.lock);
-  if (taskList.task_count < MAX_TASKS) {
-      strncpy(taskList.tasks[taskList.task_count], request.body, 255);
-      taskList.tasks[taskList.task_count][255] = '\0'; // Ensure null-termination
-      taskList.task_count++;
-      pthread_mutex_unlock(&taskList.lock);
-
-      char response_content[512];
-      sprintf(response_content, "Task '%s' added successfully!", request.body);
-      return create_http_response("200 OK", response_content);
-  } else {
-      pthread_mutex_unlock(&taskList.lock);
-      return create_http_response("500 Internal Server Error", "Task list is full");
-  }
-}
-
 
 char *handleDeleteRequest(HttpRequest request) {
     printf("Deleting\n");
@@ -262,13 +259,52 @@ char *handleDeleteRequest(HttpRequest request) {
     return create_http_response("200 OK", "Task deleted successfully");
 }
 
+char *handlePostRequest(HttpRequest request) {
+  if (request.body == NULL) {
+    return create_http_response("400 Bad Request", "No data in request body");
+  }
+
+  // Assume task is directly in the body; validate and add to list
+  if (taskList.task_count < MAX_TASKS) {
+    char *task = parse_task(request.body);
+    add_task(task);
+
+    char response_content[512];
+    sprintf(response_content, "Task '%s' added successfully!", task);
+    free(task);
+    return create_http_response("200 OK", response_content);
+  } else {
+    return create_http_response("500 Internal Server Error", "Task list is full");
+  }
+}
+
+char *parse_task(char *data) {
+  char *task = (char *) calloc(strlen(data), sizeof(char));
+
+  int idx = 0;
+  int len = strlen(data);
+  for (int i = 5; i < len; i++) {
+    // Replace any "%20" with a space
+    if ((data[i] == '%') && (i + 2 < len) && (data[i+1] == '2') && (data[i+2] == '0')) {
+      i += 2;
+      task[idx++] = ' ';
+    }
+    else {
+      task[idx++] = data[i];
+    }
+  }
+  task[idx] = '\0';
+
+  return task;
+}
+
 void add_task(const char* new_task) {
   pthread_mutex_lock(&taskList.lock); // Lock the mutex
 
   if (taskList.task_count < MAX_TASKS) {
-      strncpy(taskList.tasks[taskList.task_count], new_task, 255);
-      taskList.tasks[taskList.task_count][255] = '\0'; // Ensure null-termination
-      taskList.task_count++;
+    strncpy(taskList.tasks[taskList.task_count], new_task, 255);
+    taskList.tasks[taskList.task_count][255] = '\0'; // Ensure null-termination
+    taskList.task_count++;
   }
 
   pthread_mutex_unlock(&taskList.lock); // Unlock the mutex

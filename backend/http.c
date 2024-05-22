@@ -26,7 +26,7 @@ HttpRequest parse_http_request(const char *request_str) {
 }
 
 char *create_http_response(char *status_code, char *data) {
-  char *response = (char *) calloc(1024, sizeof(char));
+  char *response = (char *) calloc(4096, sizeof(char));
   int offset = 0;
 
   // Create HTTP header

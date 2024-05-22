@@ -29,10 +29,11 @@ extern TaskList taskList;
 
 
 void *handleConnection(void *arg);
+int getHTMLFromFile(char **document, char *filePath);
 char *handleGetRequest(HttpRequest request);
 char *handlePostRequest(HttpRequest request);
 char *handleDeleteRequest(HttpRequest request);
 void add_task(const char* new_task);
-
+char *parse_task(char *data);
 
 #endif
